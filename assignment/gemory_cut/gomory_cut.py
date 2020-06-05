@@ -1,174 +1,155 @@
 from fractions import Fraction
-from math import floor
-
 
 class Gomory:
     def __init__(self, A, b, c):
         self.M = len(b)
         self.N = len(c)
-        self.a = []
-        for i in range(self.M + 1):
-            temp = [Fraction(0) for _ in range(self.M + self.N + 1)]
-            self.a.append(temp)
-        
+        self.A = A
+        self.b = b
+        self.c = c
+        self.a = [[Fraction(0) for i in range(self.M + self.N + 1)] for j in range(self.M + 2)]
+        self.basis = [(self.N + i) for i in range(self.M)]
+s = Simplex('input/in_1.txt', True)
+s.printSolution()
+        # a[i][j] = A[i][j]
         for i in range(self.M):
             for j in range(self.N):
-                self.a[i][j] = Fraction(A[i][j])
+                self.a[i][j] = Fraction(self.A[i][j])
 
-        for j in range(self.N, self.N + self.M):
-            self.a[j-self.N][j] = Fraction(1)
-        for j in range(self.N):
-            self.a[self.M][j] = Fraction(c[j])
+        # artificial variables
+        for i in range(self.M):
+            self.a[i][self.N + i] = Fraction(1)
+            self.a[self.M + 1][self.N + i] = Fraction(1)
+
+        # b
         for i in range(self.M):
             self.a[i][self.M + self.N] = Fraction(b[i])
-        
-    def pivot(self,p, q):
-        for i in range(self.M + 1):
-            for j in range(len(self.a[0])):
-                if i != p and j != q:
-                    self.a[i][j] -= self.a[p][j] * self.a[i][q] / self.a[p][q]
-       
-        for i in range(self.M + 1):
-            if i != p:
-                self.a[i][q] = Fraction(0)
-        for j in range(len(self.a[0])):
-            if j != q:
-                self.a[p][j] /= self.a[p][q]
-            
-        self.a[p][q] = Fraction(1)
 
-    def get_pivot(self):
-        p = 0
-        q = 0
+        # add objective function as an equation in row M + 1
+        for i in range(self.N):
+            self.a[self.M + 1][i] = Fraction(-c[i])
 
-        ## ?? self.a[self.M][q] max
-        while q < len(self.a[0]) - 1:
-            if self.a[self.M][q] > 0:
-                break
-            q += 1
-        
-        while p < self.M:
-            if self.a[p][q] > 0:
-                break
-            p += 1
+        # add phase 1 objective in row M
+        for j in range(self.M + self.N + 1):
+            for i in range(self.M):
+                self.a[self.M][j] += self.a[i][j]
 
-        return p, q
+    # select pivot column by finding the most negative indicator (a[M][0, N + M])
+    def select_pivot_col(self):
+        col = -1
+        min_negative = 0
+        for i in range(0, self.N + self.M):
+            if self.a[self.M][i] < 0 and self.a[self.M][i] < min_negative:
+                min_negative = self.a[self.M][i]
+                col = i
+        return col
 
-    def solve_simplex(self):
-        total_var = len(self.a[0])
-        while True:
-            p = 0
-            q = 0
+    # select pivot row after selected a pivot column
+    # min positive a[i][M+N] / a[i][col] when a[i][col] > 0
+    def select_pivot_row(self, col):
+        row = -1
+        min_positive = Fraction(100000)
+        for i in range(self.M):
+            if self.a[i][col] > 0:
+                temp = Fraction(self.a[i][self.M + self.N], self.a[i][col])
+                if temp < min_positive:
+                    min_positive = temp
+                    row = i
+        return row
 
-            ## ?? self.a[self.M][q] max
-            while q < len(self.a[0]) - 1:
-                if self.a[self.M][q] > 0:
-                    break
-                q += 1
-            if q >= len(self.a[0]) - 1:
-                break
-            
-            while p < self.M:
-                if self.a[p][q] > 0:
-                    break
-                p += 1
-            
+    def pivot(self, row, col):
+        # pivot row
+        pivot_val = self.a[row][col]
+        for i in range(self.M + self.N + 1):
+            self.a[row][i] = self.a[row][i] / pivot_val
 
-            for i in range(p+1, self.M):
-                if self.a[i][q] > 0:
-                    if self.a[i][total_var - 1]/self.a[i][q] < self.a[p][total_var - 1]/self.a[p][q]:
-                        p = i
-            
-            self.pivot(p, q)
+        # other row
+        for i in range(self.M + 2):
+            if i != row:
+                coef = Fraction(-self.a[i][col], pivot_val)
+                for j in range(self.M + self.N + 1):
+                    self.a[i][j] = self.a[i][j] + coef * self.a[row][j]
 
-    def get_cut(self, row):
-        size = len(self.a)
-        num_var = len(self.a[0])
-        vir_var = num_var - self.M - 1
-        cut = []
-        for i in range(num_var):
-            cut.append(self.a[row][i])
+        self.basis[row] = col
 
-        for i in range(vir_var):
-            cut[i] = Fraction(0)
-        
-        for i in range(vir_var, num_var):
-            cut[i] = floor(cut[i]) - cut[i]
-        
-        print("----------")
-        print(cut)
-        print('----------')
+    def print_result(self):
+        print('optimal value = ', self.a[self.M][self.M + self.N])
+        print('result: ')
+        for i in range(self.M):
+            print('x[', self.basis[i], '] =', self.a[i][self.M + self.N])
+        print('****************************')
 
-        new_prob = self.a
-        new_prob.insert(size-1, cut)
-        for i in range(len(new_prob)):
-            if i == len(new_prob) - 2:
-                new_prob[i].insert(num_var - 1, Fraction(1))
+    def print_a(self):
+        for i in range(len(self.a)):
+            if i < self.M:
+                print(self.basis[i], '| ', end='')
             else:
-                new_prob[i].insert(num_var - 1, Fraction(0))
-        
+                print('    ', end='')
+            for j in range(len(self.a[i])):
+                print(self.a[i][j], end='   ')
+            print()
+        print("===========================================")
 
-        print("cut")
-        for i in range(len(new_prob)):
-            print(new_prob[i])
-        self.a = new_prob
-        print('==========================================')
+    def phase_one(self):
+        print('phase 1:')
+        while True:
+            self.print_a()
+            col = self.select_pivot_col()
+            if col < 0:
+                break
+            row = self.select_pivot_row(col)
+            if row < 0:
+                break
+            print("pivot:", row, col)
+            self.pivot(row, col)
 
-    def solve(self):
-        self.solve_simplex()
-        for row in range(self.M):
-            
-            self.get_cut(row)
-            
-            q = 0
-            min_val = 10000000
-            for i in range(self.M - 1, len(self.a[0])-1):
-                if self.a[-1][i] == 0 or self.a[-2][i] == 0:
-                    continue
+    def init_phase_two(self):
+        # check feasible solution or not
+        temp = self.a[self.M]
+        self.a[self.M] = self.a[self.M + 1]
+        self.a[self.M + 1] = temp
 
-                if self.a[-2][i]/self.a[-1][i] < min_val:
-                    min_val = self.a[-2][i]
-                    q = i
+    def phase_two(self):
+        print('phase 2:')
+        while True:
+            self.print_a()
+            col = self.select_pivot_col()
+            if col < 0:
+                break
+            row = self.select_pivot_row(col)
+            if row < 0:
+                break
+            print("pivot:", row, col)
+            self.pivot(row, col)
 
-            self.pivot(len(self.a) - 2, q)
+            for i in range(self.M + 2):
+                for j in range(self.N, self.N + self.M):
+                    self.a[i][j] = Fraction(0)
 
-            for i in range(len(self.a)):
-                print(self.a[i])
-            print('==========================================')
-        
+    def two_phase_simplex(self):
+        self.phase_one()
+        self.init_phase_two()
+        self.phase_two()
+        self.print_result()
 
-# A = [
-#     [3,2,1,0,0],
-#     [5,1,1,1,0],
-#     [2,5,1,0,1]
-# ]
-# b = [1,3,4]
-# c = [1,1,1,1,1]
 
-# A = [
-#     [5, 15],
-#     [4, 4],
-#     [35, 20]
-# ]
+    # def gomory_cut
+    # def dual_simplex
 
-# b = [480, 160, 1190]
+if __name__ == '__main__':
+    # A = [
+    #     [2, 1],
+    #     [2, 3]
+    # ]
+    # b = [8, 12]
+    # c = [3, 1]
 
-# c = [13, 23]
+    A = [
+        [2, 1, 0],
+        [2, -1, 1]
+    ]
+    b = [2, 5]
+    c = [3, 2, 4]
 
-# A = [
-#     [1, 0, 0, 1, 0, 6, 0],
-#     [3, 1, -4, 0, 0, 2, 1],
-#     [1, 2, 0, 0, 1, 2, 0]
-# ]
-# b = [9, 2, 6]
-# c = [1, -6, 32, 1, 1, 10, 100]
-
-A = [
-    [-1, 3],
-    [7, 1]
-]
-b = [6, 35]
-c = [7, 10]
-
-simplex = Gomory(A, b, c)
-simplex.solve()
+    gomory = Gomory(A, b, c)
+    gomory.two_phase_simplex()
